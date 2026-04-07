@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PageSim — Page Replacement Simulator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- ═══════════════ HEADER ═══════════════ -->
+<header class="site-header">
+  <div class="logo">
+    <span class="logo-icon">⬡</span>
+    <span class="logo-text">PageSim</span>
+  </div>
+  <nav class="header-nav">
+    <a href="#simulator" class="nav-link active" data-section="simulator">Simulator</a>
+    <a href="#compare"   class="nav-link"         data-section="compare">Compare</a>
+    <a href="#analysis"  class="nav-link"         data-section="analysis">Analysis</a>
+    <a href="#learn"     class="nav-link"         data-section="learn">Learn</a>
+  </nav>
+  <button class="theme-toggle" id="themeToggle" title="Toggle theme">
+    <span class="theme-icon">◑</span>
+  </button>
+</header>
+
+<!-- ═══════════════ HERO ═══════════════ -->
+<section class="hero">
+  <div class="hero-bg">
+    <div class="grid-lines"></div>
+  </div>
+  <div class="hero-content">
+    <p class="hero-eyebrow">Operating Systems / Memory Management</p>
+    <h1 class="hero-title">Page Replacement<br/><em>Algorithms</em></h1>
+    <p class="hero-sub">Visualise, compare and understand how operating systems manage memory — step by step.</p>
+  </div>
+</section>
+
+<!-- ═══════════════ INPUT PANEL ═══════════════ -->
+<section class="section" id="input-section">
+  <div class="container">
+    <div class="section-label">01 / Configure</div>
+    <h2 class="section-title">Set Parameters</h2>
+
+    <div class="input-grid">
+      <!-- Page Reference String -->
+      <div class="input-card full-width">
+        <label class="input-label">Page Reference String
+          <span class="input-hint">Space or comma separated integers</span>
+        </label>
+        <div class="input-row">
+          <input type="text" id="pageInput" class="text-input"
+                 placeholder="e.g. 1 2 3 4 1 2 5 1 2 3 4 5" />
+          <button class="btn btn-ghost" id="randomBtn">⚄ Random</button>
+        </div>
+        <div class="quick-samples">
+          <span class="sample-label">Quick samples:</span>
+          <button class="sample-btn" data-pages="1 2 3 4 1 2 5 1 2 3 4 5" data-frames="3">Classic FIFO</button>
+          <button class="sample-btn" data-pages="7 0 1 2 0 3 0 4 2 3 0 3 2" data-frames="4">Belady Demo</button>
+          <button class="sample-btn" data-pages="1 2 3 4 5 1 2 3 4 5" data-frames="3">LRU Test</button>
+          <button class="sample-btn" data-pages="2 3 2 1 5 2 4 5 3 2 5 2" data-frames="3">Optimal Demo</button>
+        </div>
+      </div>
+
+      <!-- Frames -->
+      <div class="input-card">
+        <label class="input-label">Number of Frames
+          <span class="input-hint">Physical memory slots (1–10)</span>
+        </label>
+        <div class="frame-control">
+          <button class="frame-btn" id="frameMinus">−</button>
+          <span class="frame-value" id="frameDisplay">3</span>
+          <button class="frame-btn" id="framePlus">+</button>
+        </div>
+        <input type="range" id="frameSlider" min="1" max="10" value="3" class="range-input" />
+      </div>
+
+      <!-- Algorithm -->
+      <div class="input-card">
+        <label class="input-label">Algorithm
+          <span class="input-hint">Select to visualize</span>
+        </label>
+        <div class="algo-pills">
+          <button class="algo-pill active" data-algo="0">FIFO</button>
+          <button class="algo-pill" data-algo="1">LRU</button>
+          <button class="algo-pill" data-algo="2">Optimal</button>
+          <button class="algo-pill" data-algo="3">LFU</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="action-row">
+      <button class="btn btn-primary" id="runBtn">▶ Run Simulation</button>
+      <button class="btn btn-ghost" id="resetBtn">↺ Reset</button>
+    </div>
+    <div class="error-msg" id="errorMsg"></div>
+  </div>
+</section>
+
+<!-- ═══════════════ SIMULATOR ═══════════════ -->
+<section class="section" id="simulator">
+  <div class="container">
+    <div class="section-label">02 / Visualize</div>
+    <h2 class="section-title">Step-by-Step Simulation</h2>
+
+    <div class="sim-layout">
+      <!-- Timeline -->
+      <div class="timeline-bar">
+        <span class="tl-label">Step</span>
+        <input type="range" id="timelineSlider" min="0" value="0" class="timeline-input" />
+        <span class="tl-step" id="stepCounter">0 / 0</span>
+      </div>
+
+      <!-- Playback controls -->
+      <div class="playback-controls">
+        <button class="ctrl-btn" id="firstBtn" title="First step">⏮</button>
+        <button class="ctrl-btn" id="prevBtn"  title="Previous">◀</button>
+        <button class="ctrl-btn play-btn" id="playBtn" title="Play/Pause">▶</button>
+        <button class="ctrl-btn" id="nextBtn"  title="Next">▶|</button>
+        <button class="ctrl-btn" id="lastBtn"  title="Last step">⏭</button>
+        <div class="speed-wrap">
+          <span class="speed-label">Speed</span>
+          <input type="range" id="speedSlider" min="100" max="2000" value="800" step="100" class="range-input speed-range" />
+          <span class="speed-val" id="speedVal">800ms</span>
+        </div>
+      </div>
+
+      <!-- Step Status -->
+      <div class="step-status" id="stepStatus">
+        <div class="status-page">Page <span id="curPage">—</span></div>
+        <div class="status-badge" id="statusBadge">—</div>
+        <div class="status-reason" id="statusReason">Run simulation to begin</div>
+      </div>
+
+      <!-- Frame blocks -->
+      <div class="frames-wrapper">
+        <div class="frames-title">Memory Frames</div>
+        <div class="frames-container" id="framesContainer"></div>
+      </div>
+
+      <!-- Page sequence track -->
+      <div class="page-track-wrap">
+        <div class="page-track-title">Page Sequence</div>
+        <div class="page-track" id="pageTrack"></div>
+      </div>
+
+      <!-- Summary metrics -->
+      <div class="metrics-row" id="metricsRow">
+        <div class="metric-card">
+          <div class="metric-val" id="mTotal">—</div>
+          <div class="metric-lbl">Total Requests</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-val fault-color" id="mFaults">—</div>
+          <div class="metric-lbl">Page Faults</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-val hit-color" id="mHits">—</div>
+          <div class="metric-lbl">Page Hits</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-val" id="mHitRatio">—</div>
+          <div class="metric-lbl">Hit Ratio</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-val" id="mFaultRatio">—</div>
+          <div class="metric-lbl">Fault Ratio</div>
+        </div>
+      </div>
+
+      <div class="export-row">
+        <button class="btn btn-ghost" id="exportJson">↓ Export JSON</button>
+        <button class="btn btn-ghost" id="exportCsv">↓ Export CSV</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ COMPARISON ═══════════════ -->
+<section class="section alt-section" id="compare">
+  <div class="container">
+    <div class="section-label">03 / Compare</div>
+    <h2 class="section-title">Algorithm Comparison</h2>
+
+    <div class="compare-table-wrap">
+      <table class="compare-table" id="compareTable">
+        <thead>
+          <tr>
+            <th>Algorithm</th>
+            <th>Faults</th>
+            <th>Hits</th>
+            <th>Hit Ratio</th>
+            <th>Fault Ratio</th>
+            <th>Performance</th>
+          </tr>
+        </thead>
+        <tbody id="compareBody">
+          <tr><td colspan="6" class="empty-msg">Run a simulation to see comparison</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Side-by-side frame grids -->
+    <div class="sidebyside-grid" id="sideBySide"></div>
+  </div>
+</section>
+
+<!-- ═══════════════ ANALYSIS ═══════════════ -->
+<section class="section" id="analysis">
+  <div class="container">
+    <div class="section-label">04 / Analyze</div>
+    <h2 class="section-title">Graphical Analysis</h2>
+
+    <div class="chart-grid">
+      <div class="chart-card">
+        <h3 class="chart-title">Page Faults vs Number of Frames</h3>
+        <canvas id="faultChart"></canvas>
+      </div>
+      <div class="chart-card">
+        <h3 class="chart-title">Hit Ratio vs Number of Frames</h3>
+        <canvas id="hitChart"></canvas>
+      </div>
+    </div>
+
+    <div class="belady-banner" id="beladyBanner" style="display:none">
+      <div class="belady-icon">⚠</div>
+      <div>
+        <strong>Belady's Anomaly Detected!</strong>
+        <p id="beladyDesc"></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ LEARN ═══════════════ -->
+<section class="section alt-section" id="learn">
+  <div class="container">
+    <div class="section-label">05 / Learn</div>
+    <h2 class="section-title">Algorithm Reference</h2>
+
+    <div class="learn-grid">
+      <div class="learn-card">
+        <div class="learn-algo-tag">FIFO</div>
+        <h3>First In, First Out</h3>
+        <p>Replaces the page that has been in memory the <strong>longest</strong>. Maintains a queue and evicts from the front.</p>
+        <div class="complexity-row">
+          <span class="comp-badge">Time: O(n)</span>
+          <span class="comp-badge">Space: O(f)</span>
+        </div>
+        <div class="cases">
+          <div class="case best">✓ Best: Sequential access with no reuse</div>
+          <div class="case worst">✗ Worst: Cyclic access — suffers Belady's Anomaly</div>
+        </div>
+      </div>
+
+      <div class="learn-card">
+        <div class="learn-algo-tag lru-tag">LRU</div>
+        <h3>Least Recently Used</h3>
+        <p>Replaces the page that has <strong>not been used for the longest time</strong>. Based on the principle of temporal locality.</p>
+        <div class="complexity-row">
+          <span class="comp-badge">Time: O(n·f)</span>
+          <span class="comp-badge">Space: O(f)</span>
+        </div>
+        <div class="cases">
+          <div class="case best">✓ Best: Workloads with strong temporal locality</div>
+          <div class="case worst">✗ Worst: Large cyclic scans — thrashes badly</div>
+        </div>
+      </div>
+
+      <div class="learn-card">
+        <div class="learn-algo-tag opt-tag">OPT</div>
+        <h3>Optimal (Bélády)</h3>
+        <p>Replaces the page that will <strong>not be used for the longest time in the future</strong>. Theoretical benchmark — requires future knowledge.</p>
+        <div class="complexity-row">
+          <span class="comp-badge">Time: O(n·f)</span>
+          <span class="comp-badge">Space: O(f)</span>
+        </div>
+        <div class="cases">
+          <div class="case best">✓ Best: Always optimal — minimum fault count</div>
+          <div class="case worst">✗ Cannot be implemented in real OS</div>
+        </div>
+      </div>
+
+      <div class="learn-card">
+        <div class="learn-algo-tag lfu-tag">LFU</div>
+        <h3>Least Frequently Used</h3>
+        <p>Replaces the page with the <strong>lowest access frequency</strong>. Ties broken by LRU order. Rewards pages accessed many times.</p>
+        <div class="complexity-row">
+          <span class="comp-badge">Time: O(n·f)</span>
+          <span class="comp-badge">Space: O(f)</span>
+        </div>
+        <div class="cases">
+          <div class="case best">✓ Best: Skewed access patterns with hot pages</div>
+          <div class="case worst">✗ Worst: Cold-start problem — new popular pages evicted early</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Belady Anomaly Explanation -->
+    <div class="learn-card belady-card">
+      <div class="learn-algo-tag belady-explain-tag">⚠ Special Case</div>
+      <h3>Belady's Anomaly</h3>
+      <p>Normally, adding more frames reduces page faults. <strong>Belady's Anomaly</strong> is the counterintuitive phenomenon where increasing the number of frames actually <em>increases</em> the page fault rate for FIFO. It does NOT affect LRU or Optimal.</p>
+      <p style="margin-top:0.75rem">Classic example: pages <code>1 2 3 4 1 2 5 1 2 3 4 5</code> with FIFO: 3 frames → 9 faults, 4 frames → 10 faults.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ FOOTER ═══════════════ -->
+<footer class="site-footer">
+  <div class="footer-inner">
+    <span class="logo-text">⬡ PageSim</span>
+    <span>Operating Systems — Page Replacement Algorithms Simulator</span>
+  </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="script.js"></script>
+</body>
+</html>
