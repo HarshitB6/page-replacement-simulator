@@ -213,6 +213,7 @@ let curStep    = 0;
 let playTimer  = null;
 let faultChart = null;
 let hitChart   = null;
+let logState   = { algoIndex: -1, renderedUntil: -1 };
 
 // ══════════════════════════════════════════════
 //  DOM refs
@@ -258,6 +259,7 @@ function runSimulation() {
 
   buildPageTrack(pages);
   updateTimelineMax(pages.length - 1);
+  resetExecutionLog();
   renderStep();
   renderMetrics();
   renderComparison();
@@ -324,6 +326,8 @@ function renderStep() {
       el.classList.add(s.hit ? 'past-hit' : 'past-fault');
     }
   });
+
+  syncExecutionLog(result, total);
 }
 
 function renderMetrics() {
@@ -337,6 +341,255 @@ function renderMetrics() {
   $('mFaultRatio').textContent = (r.faultRatio * 100).toFixed(1) + '%';
 }
 
+// Execution log
+function resetExecutionLog(message = '') {
+  const log = $('executionLog');
+  if (!log) return;
+  log.innerHTML = '';
+  logState = { algoIndex, renderedUntil: -1 };
+  log.dataset.algo = '';
+  log.closest('.execution-log-wrap')?.removeAttribute('data-algo');
+
+  if (message) {
+    const empty = document.createElement('div');
+    empty.className = 'log-empty';
+    empty.id = 'logEmpty';
+    empty.textContent = message;
+    log.appendChild(empty);
+  }
+
+  const chip = $('executionLogChip');
+  if (chip) chip.textContent = message ? 'Awaiting run' : 'Streaming';
+  updateExecutionLogHud(null, 0, 0);
+}
+
+function syncExecutionLog(result, total) {
+  const log = $('executionLog');
+  if (!log) return;
+
+  if (logState.algoIndex !== algoIndex) {
+    resetExecutionLog();
+  }
+
+  const empty = $('logEmpty');
+  if (empty) empty.remove();
+
+  log.dataset.algo = result.algorithm.toLowerCase();
+  log.closest('.execution-log-wrap')?.setAttribute('data-algo', result.algorithm.toLowerCase());
+
+  for (let i = logState.renderedUntil + 1; i <= curStep; i++) {
+    appendExecutionLogStep(result.steps[i], i, result.steps);
+  }
+  logState.renderedUntil = Math.max(logState.renderedUntil, curStep);
+
+  let activeRow = null;
+  log.querySelectorAll('.log-step').forEach(row => {
+    const index = parseInt(row.dataset.step);
+    const isFuture = index > curStep;
+    const isActive = index === curStep;
+    const wasActive = row.classList.contains('active');
+    row.classList.toggle('is-hidden', isFuture);
+    row.classList.toggle('active', isActive);
+    row.setAttribute('aria-current', isActive ? 'step' : 'false');
+    if (isActive) {
+      if (!wasActive) replayLogStepEffects(row);
+      activeRow = row;
+    }
+  });
+
+  const chip = $('executionLogChip');
+  if (chip) chip.textContent = `${result.algorithm} trace | ${curStep + 1}/${total}`;
+  updateExecutionLogHud(result, curStep, total);
+
+  if (activeRow) {
+    requestAnimationFrame(() => {
+      const top = activeRow.offsetTop - (log.clientHeight / 2) + (activeRow.offsetHeight / 2);
+      log.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+    });
+  }
+}
+
+function appendExecutionLogStep(step, index, steps) {
+  const log = $('executionLog');
+  if (!log || !step) return;
+
+  const touchedIndex = Math.max(0, getTouchedFrameIndex(step, index, steps));
+  const traceAction = getTraceAction(step, index, steps, touchedIndex);
+  const row = document.createElement('div');
+  row.className = `log-step ${step.hit ? 'is-hit' : 'is-fault'}`;
+  row.dataset.step = index;
+  row.dataset.reason = step.reason;
+  row.dataset.action = traceAction.label;
+  row.title = step.reason;
+  row.setAttribute('role', 'button');
+  row.setAttribute('tabindex', '0');
+  row.setAttribute(
+    'aria-label',
+    `Jump to step ${index + 1}. Page ${step.page}. ${step.hit ? 'Hit' : 'Fault'}. ${step.reason}`
+  );
+  row.addEventListener('click', () => jumpToStep(index));
+  row.addEventListener('keydown', event => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      jumpToStep(index);
+    }
+  });
+
+  const marker = document.createElement('div');
+  marker.className = 'log-marker';
+  marker.innerHTML = `
+    <span class="log-dot"></span>
+    <span class="log-step-no">T+${String(index + 1).padStart(2, '0')}</span>
+  `;
+
+  const body = document.createElement('div');
+  body.className = 'log-card-body';
+  body.style.setProperty('--slot-index', touchedIndex + 1);
+
+  const page = document.createElement('div');
+  page.className = 'log-page';
+  page.innerHTML = `
+    <span>Incoming</span>
+    <strong>${step.page}</strong>
+    <small>req ${String(index + 1).padStart(2, '0')}</small>
+  `;
+
+  const frames = document.createElement('div');
+  frames.className = 'log-frame-strip';
+  step.frames.forEach((frameValue, frameIndex) => {
+    frames.appendChild(createLogFrame(step, frameValue, frameIndex, touchedIndex, index, steps));
+  });
+
+  const operation = document.createElement('div');
+  operation.className = `log-operation ${traceAction.kind}`;
+  operation.innerHTML = `
+    <span>${traceAction.label}</span>
+    <strong>${traceAction.detail}</strong>
+  `;
+
+  const status = document.createElement('div');
+  status.className = `log-status ${step.hit ? 'hit' : 'fault'}`;
+  status.innerHTML = `
+    <span class="log-status-icon">${step.hit ? '✓' : '×'}</span>
+    <span>${step.hit ? 'Hit' : 'Fault'}</span>
+  `;
+
+  body.appendChild(page);
+  body.appendChild(frames);
+  body.appendChild(operation);
+  body.appendChild(status);
+  row.appendChild(marker);
+  row.appendChild(body);
+  log.appendChild(row);
+}
+
+function updateExecutionLogHud(result, currentIndex, total) {
+  const visibleCount = result ? currentIndex + 1 : 0;
+  const hitCount = result ? result.steps.slice(0, visibleCount).filter(step => step.hit).length : 0;
+  const faultCount = visibleCount - hitCount;
+  const pct = result && total ? ((visibleCount / total) * 100).toFixed(2) : 0;
+
+  const visibleEl = $('logVisibleCount');
+  const hitEl = $('logHitCount');
+  const faultEl = $('logFaultCount');
+  const fillEl = $('logProgressFill');
+  if (visibleEl) visibleEl.textContent = visibleCount;
+  if (hitEl) hitEl.textContent = hitCount;
+  if (faultEl) faultEl.textContent = faultCount;
+  if (fillEl) fillEl.style.width = `${pct}%`;
+}
+
+function getTraceAction(step, index, steps, touchedIndex) {
+  if (step.hit) {
+    return {
+      kind: 'resident',
+      label: 'RESIDENT',
+      detail: `Frame F${touchedIndex + 1} matched`,
+    };
+  }
+
+  if (step.replaced !== -1) {
+    return {
+      kind: 'evict',
+      label: 'EVICT',
+      detail: `${step.replaced} -> ${step.page} in F${touchedIndex + 1}`,
+    };
+  }
+
+  const previous = steps[index - 1]?.frames?.[touchedIndex];
+  const target = previous === -1 || previous === undefined ? `F${touchedIndex + 1}` : 'open slot';
+  return {
+    kind: 'load',
+    label: 'LOAD',
+    detail: `${step.page} -> ${target}`,
+  };
+}
+
+function replayLogStepEffects(row) {
+  row.querySelectorAll('.log-frame.inserted, .log-replaced-value').forEach(el => {
+    el.style.animation = 'none';
+    void el.offsetWidth;
+    el.style.animation = '';
+  });
+}
+
+function createLogFrame(step, frameValue, frameIndex, touchedIndex, stepIndex, steps) {
+  const cell = document.createElement('div');
+  cell.className = 'log-frame';
+  if (frameValue === -1) cell.classList.add('empty');
+  if (frameIndex === touchedIndex) {
+    cell.classList.add(step.hit ? 'hit' : 'fault');
+  }
+
+  const value = document.createElement('span');
+  value.className = 'log-frame-value';
+  value.textContent = frameValue === -1 ? '-' : frameValue;
+  cell.appendChild(value);
+
+  const label = document.createElement('span');
+  label.className = 'log-frame-label';
+  label.textContent = `F${frameIndex + 1}`;
+  cell.appendChild(label);
+
+  if (!step.hit && step.replaced !== -1 && frameIndex === touchedIndex) {
+    const oldValue = document.createElement('span');
+    oldValue.className = 'log-replaced-value';
+    oldValue.textContent = step.replaced;
+    cell.appendChild(oldValue);
+  }
+
+  if (!step.hit && frameIndex === touchedIndex) {
+    const prevValue = steps[stepIndex - 1]?.frames?.[frameIndex];
+    if (stepIndex === 0 || prevValue !== frameValue) cell.classList.add('inserted');
+  }
+
+  return cell;
+}
+
+function getTouchedFrameIndex(step, index, steps) {
+  if (step.hit) return step.frames.indexOf(step.page);
+
+  const prevFrames = steps[index - 1]?.frames || [];
+  if (step.replaced !== -1) {
+    const replacedIndex = step.frames.findIndex((value, frameIndex) => (
+      value === step.page && prevFrames[frameIndex] === step.replaced
+    ));
+    if (replacedIndex !== -1) return replacedIndex;
+  }
+
+  const insertedIndex = step.frames.findIndex((value, frameIndex) => (
+    value === step.page && prevFrames[frameIndex] !== step.page
+  ));
+  return insertedIndex !== -1 ? insertedIndex : step.frames.indexOf(step.page);
+}
+
+function jumpToStep(index) {
+  if (!simData) return;
+  stopPlay();
+  curStep = index;
+  renderStep();
+}
+
 // ══════════════════════════════════════════════
 //  PAGE TRACK
 // ══════════════════════════════════════════════
@@ -347,7 +600,7 @@ function buildPageTrack(pages) {
     const cell = document.createElement('div');
     cell.className   = 'pt-cell';
     cell.textContent = p;
-    cell.addEventListener('click', () => { curStep = i; renderStep(); });
+    cell.addEventListener('click', () => jumpToStep(i));
     track.appendChild(cell);
   });
 }
@@ -595,6 +848,7 @@ document.addEventListener('DOMContentLoaded', () => {
     simData = null; curStep = 0; stopPlay();
     $('framesContainer').innerHTML = '';
     $('pageTrack').innerHTML = '';
+    resetExecutionLog('Run simulation to stream memory changes.');
     $('stepStatus').querySelector('#statusReason').textContent = 'Run simulation to begin';
     $('statusBadge').textContent = '—';
     $('curPage').textContent = '—';
@@ -647,7 +901,11 @@ document.addEventListener('DOMContentLoaded', () => {
       pill.classList.add('active');
       algoIndex = parseInt(pill.dataset.algo);
       curStep = 0; stopPlay();
-      if (simData) { renderStep(); renderMetrics(); }
+      if (simData) {
+        resetExecutionLog();
+        renderStep();
+        renderMetrics();
+      }
     });
   });
 
@@ -739,6 +997,7 @@ async function tryLoadFromJSON() {
     $('pageInput').value = simData.input.pages.join(' ');
     $('frameDisplay').textContent = simData.input.capacity;
     $('frameSlider').value = simData.input.capacity;
+    resetExecutionLog();
     renderStep();
     renderMetrics();
     renderComparison();

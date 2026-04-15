@@ -142,6 +142,37 @@
         <div class="frames-container" id="framesContainer"></div>
       </div>
 
+      <!-- Execution log -->
+      <div class="execution-log-wrap">
+        <div class="execution-log-head">
+          <div>
+            <div class="frames-title">Trace Console</div>
+            <p class="execution-log-sub">Memory events streaming with playback</p>
+          </div>
+          <div class="execution-log-chip" id="executionLogChip">Awaiting run</div>
+        </div>
+        <div class="execution-log-hud">
+          <div class="log-hud-item">
+            <span>Streamed</span>
+            <strong id="logVisibleCount">0</strong>
+          </div>
+          <div class="log-hud-item hit">
+            <span>Hits</span>
+            <strong id="logHitCount">0</strong>
+          </div>
+          <div class="log-hud-item fault">
+            <span>Faults</span>
+            <strong id="logFaultCount">0</strong>
+          </div>
+          <div class="log-progress-wrap">
+            <span id="logProgressFill"></span>
+          </div>
+        </div>
+        <div class="execution-log" id="executionLog" aria-live="polite">
+          <div class="log-empty" id="logEmpty">Run simulation to stream memory changes.</div>
+        </div>
+      </div>
+
       <!-- Page sequence track -->
       <div class="page-track-wrap">
         <div class="page-track-title">Page Sequence</div>
