@@ -138,7 +138,23 @@
 
       <!-- Frame blocks -->
       <div class="frames-wrapper">
-        <div class="frames-title">Memory Frames</div>
+        <div class="frames-head">
+          <div class="frames-title">Memory Frames</div>
+          <div class="view-mode-control" id="viewMode" aria-label="Memory frame view mode">
+            <button class="view-mode-btn active" type="button" data-view="blocks" title="Blocks view">
+              <span class="view-icon">▦</span>
+              Blocks
+            </button>
+            <button class="view-mode-btn" type="button" data-view="table" title="Table view">
+              <span class="view-icon">☷</span>
+              Table
+            </button>
+            <button class="view-mode-btn" type="button" data-view="matrix" title="Matrix view">
+              <span class="view-icon">▥</span>
+              Matrix
+            </button>
+          </div>
+        </div>
         <div class="frames-container" id="framesContainer"></div>
       </div>
 

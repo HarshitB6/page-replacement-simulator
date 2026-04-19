@@ -214,6 +214,7 @@ let playTimer  = null;
 let faultChart = null;
 let hitChart   = null;
 let logState   = { algoIndex: -1, renderedUntil: -1 };
+let frameViewMode = 'blocks';
 
 // ══════════════════════════════════════════════
 //  DOM refs
@@ -284,34 +285,7 @@ function renderStep() {
   badge.className   = 'status-badge ' + (step.hit ? 'hit' : 'fault');
   $('statusReason').textContent = step.reason;
 
-  // Frame blocks
-  const container = $('framesContainer');
-  container.innerHTML = '';
-  step.frames.forEach((f, i) => {
-    const div = document.createElement('div');
-    div.className = 'frame-block';
-    if (f === -1) {
-      div.classList.add('empty');
-      div.textContent = '—';
-    } else {
-      div.textContent = f;
-      if (!step.hit && f === step.page) {
-        div.classList.add('active-fault');
-      } else if (step.hit && f === step.page) {
-        div.classList.add('active-hit');
-      }
-      if (step.replaced !== -1 && step.replaced === simData.results[algoIndex].steps[curStep > 0 ? curStep-1 : 0]?.frames[i] && f === step.page) {
-        div.classList.add('replaced');
-      }
-    }
-    // Add frame number label
-    const label = document.createElement('div');
-    label.style.cssText = 'position:absolute;bottom:-20px;left:0;right:0;text-align:center;font-size:.65rem;color:var(--text3);font-family:var(--font-mono)';
-    label.textContent = `F${i+1}`;
-    div.style.position = 'relative';
-    div.appendChild(label);
-    container.appendChild(div);
-  });
+  renderFrameView(result, step);
 
   // Timeline + counter
   $('timelineSlider').value = curStep;
@@ -328,6 +302,169 @@ function renderStep() {
   });
 
   syncExecutionLog(result, total);
+}
+
+function renderFrameView(result, step) {
+  const container = $('framesContainer');
+  container.innerHTML = '';
+
+  if (frameViewMode === 'table') {
+    renderFrameTable(container, step);
+  } else if (frameViewMode === 'matrix') {
+    renderFrameMatrix(container, result);
+  } else {
+    renderFrameBlocks(container, result, step);
+  }
+}
+
+function renderFrameBlocks(container, result, step) {
+  step.frames.forEach((f, i) => {
+    const div = document.createElement('div');
+    div.className = 'frame-block';
+    if (f === -1) {
+      div.classList.add('empty');
+      div.textContent = '-';
+    } else {
+      div.textContent = f;
+      if (!step.hit && f === step.page) {
+        div.classList.add('active-fault');
+      } else if (step.hit && f === step.page) {
+        div.classList.add('active-hit');
+      }
+      if (step.replaced !== -1 && step.replaced === result.steps[curStep > 0 ? curStep-1 : 0]?.frames[i] && f === step.page) {
+        div.classList.add('replaced');
+      }
+    }
+
+    const label = document.createElement('div');
+    label.style.cssText = 'position:absolute;bottom:-20px;left:0;right:0;text-align:center;font-size:.65rem;color:var(--text3);font-family:var(--font-mono)';
+    label.textContent = `F${i+1}`;
+    div.style.position = 'relative';
+    div.appendChild(label);
+    container.appendChild(div);
+  });
+}
+
+function renderFrameTable(container, step) {
+  const wrap = document.createElement('div');
+  wrap.className = 'frame-table-wrap';
+
+  const rows = step.frames.map((f, i) => {
+    const isCurrentPage = f === step.page;
+    const valueClass = isCurrentPage ? (step.hit ? 'hit-value' : 'fault-value') : '';
+    const status = f === -1 ? 'Empty' : (isCurrentPage ? (step.hit ? 'Hit' : 'Loaded') : 'Resident');
+    return `
+      <tr>
+        <th>F${i + 1}</th>
+        <td class="${valueClass}">${f === -1 ? '-' : f}</td>
+        <td>${status}</td>
+      </tr>
+    `;
+  }).join('');
+
+  wrap.innerHTML = `
+    <table class="frame-table">
+      <thead>
+        <tr>
+          <th>Frame</th>
+          <th>Value</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+  container.appendChild(wrap);
+}
+
+function renderFrameMatrix(container, result) {
+  const wrap = document.createElement('div');
+  wrap.className = 'frame-matrix-wrap';
+  const capacity = simData.input.capacity;
+  const currentStep = result.steps[curStep];
+
+  const headCells = result.steps.map((step, i) => {
+    const revealed = i <= curStep;
+    const classes = [
+      i === curStep ? 'current-step' : '',
+      revealed ? (step.hit ? 'hit-step' : 'fault-step') : 'pending-step'
+    ].filter(Boolean).join(' ');
+    return `
+      <th class="${classes}" data-step="${i}">
+        <span class="matrix-step-no">${i + 1}</span>
+        <strong>${revealed ? `P${step.page}` : '-'}</strong>
+      </th>
+    `;
+  }).join('');
+
+  const statusCells = result.steps.map((step, i) => {
+    const revealed = i <= curStep;
+    const classes = [
+      'matrix-status-cell',
+      i === curStep ? 'current-step' : '',
+      revealed ? (step.hit ? 'hit-step' : 'fault-step') : 'pending-step'
+    ].filter(Boolean).join(' ');
+    return `<td class="${classes}">${revealed ? (step.hit ? 'Hit' : 'Fault') : '-'}</td>`;
+  }).join('');
+
+  let bodyRows = '';
+  for (let frameIndex = 0; frameIndex < capacity; frameIndex++) {
+    const cells = result.steps.map((step, stepIndex) => {
+      const revealed = stepIndex <= curStep;
+      const value = step.frames[frameIndex];
+      const previousValue = stepIndex > 0 ? result.steps[stepIndex - 1].frames[frameIndex] : -1;
+      const isCurrentStep = stepIndex === curStep;
+      const isCurrentPage = value === step.page;
+      const classes = [];
+      if (!revealed) classes.push('pending-cell');
+      if (isCurrentStep) classes.push('current-step');
+      if (revealed && value === -1) classes.push('is-empty');
+      if (revealed && value !== previousValue && value !== -1) classes.push('changed-cell');
+      if (revealed && isCurrentStep && isCurrentPage) classes.push(step.hit ? 'hit-value' : 'fault-value', 'touched-cell');
+      else if (isCurrentStep) classes.push('current-value');
+      return `
+        <td class="${classes.join(' ')}" data-step="${stepIndex}">
+          <span>${revealed ? (value === -1 ? '-' : value) : ''}</span>
+        </td>
+      `;
+    }).join('');
+    bodyRows += `<tr><th class="matrix-frame-head">F${frameIndex + 1}</th>${cells}</tr>`;
+  }
+
+  wrap.innerHTML = `
+    <div class="matrix-summary">
+      <div>
+        <span>Current request</span>
+        <strong>Step ${curStep + 1} / ${result.steps.length} · Page ${currentStep.page}</strong>
+      </div>
+      <div class="matrix-badge ${currentStep.hit ? 'hit' : 'fault'}">${currentStep.hit ? 'Hit' : 'Fault'}</div>
+    </div>
+    <div class="matrix-legend">
+      <span><i class="legend-current"></i>Current step</span>
+      <span><i class="legend-changed"></i>Changed frame</span>
+      <span><i class="legend-hit"></i>Hit</span>
+      <span><i class="legend-fault"></i>Fault</span>
+    </div>
+    <div class="matrix-scroll">
+      <table class="frame-matrix">
+        <thead><tr><th class="matrix-corner">Frame</th>${headCells}</tr></thead>
+        <tbody>
+          <tr><th class="matrix-frame-head">Result</th>${statusCells}</tr>
+          ${bodyRows}
+        </tbody>
+      </table>
+    </div>
+  `;
+  container.appendChild(wrap);
+
+  requestAnimationFrame(() => {
+    const scrollBox = wrap.querySelector('.matrix-scroll');
+    const activeCell = wrap.querySelector(`th[data-step="${curStep}"]`);
+    if (!scrollBox || !activeCell) return;
+
+    const targetLeft = activeCell.offsetLeft - (scrollBox.clientWidth / 2) + (activeCell.offsetWidth / 2);
+    scrollBox.scrollTo({ left: Math.max(0, targetLeft), behavior: 'smooth' });
+  });
 }
 
 function renderMetrics() {
@@ -839,12 +976,26 @@ function downloadBlob(blob, name) {
 // ══════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
 
+  document.querySelectorAll('.view-mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.view-mode-btn').forEach(viewBtn => {
+        viewBtn.classList.toggle('active', viewBtn === btn);
+      });
+      frameViewMode = btn.dataset.view;
+      if (simData) renderStep();
+    });
+  });
+
   // Run / Reset
   $('runBtn').addEventListener('click', runSimulation);
   $('resetBtn').addEventListener('click', () => {
     $('pageInput').value = '';
     $('frameDisplay').textContent = '3';
     $('frameSlider').value = 3;
+    frameViewMode = 'blocks';
+    document.querySelectorAll('.view-mode-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.view === 'blocks');
+    });
     simData = null; curStep = 0; stopPlay();
     $('framesContainer').innerHTML = '';
     $('pageTrack').innerHTML = '';
@@ -962,7 +1113,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Keyboard shortcuts
   document.addEventListener('keydown', e => {
-    if (e.target.tagName === 'INPUT') return;
+    if (['INPUT', 'SELECT', 'BUTTON'].includes(e.target.tagName)) return;
     if (e.key === 'ArrowRight') $('nextBtn').click();
     if (e.key === 'ArrowLeft')  $('prevBtn').click();
     if (e.key === ' ') { e.preventDefault(); togglePlay(); }
